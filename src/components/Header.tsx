@@ -1,14 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
-import { LogOut, Settings, LayoutDashboard } from 'lucide-react'
+import { useState } from 'react'
+import { LogOut, LayoutDashboard, ChevronDown } from 'lucide-react'
 
 export default function Header() {
   const { isAuthenticated, user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
     navigate('/')
+    setProfileMenuOpen(false)
   }
 
   return (
@@ -17,9 +20,6 @@ export default function Header() {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">L</span>
-            </div>
             <span className="text-xl font-bold text-gray-900">LandingBuilder</span>
           </Link>
 
@@ -39,23 +39,34 @@ export default function Header() {
                   <span>Проекты</span>
                 </Link>
                 
-                <div className="flex items-center space-x-4">
-                  <Link to="/settings" className="text-gray-600 hover:text-gray-900 transition">
-                    <Settings size={20} />
-                  </Link>
-                  
-                  <div className="flex items-center space-x-3">
-                    <img src={user?.avatar} alt={user?.name} className="w-8 h-8 rounded-full" />
-                    <span className="text-sm text-gray-700">{user?.name}</span>
-                  </div>
-                  
+                <div className="relative">
                   <button
-                    onClick={handleLogout}
-                    className="flex items-center space-x-1 text-gray-600 hover:text-red-600 transition"
+                    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                    className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition"
                   >
-                    <LogOut size={18} />
-                    <span>Выйти</span>
+                    <img src={user?.avatar} alt={user?.name} className="w-8 h-8 rounded-full" />
+                    <span className="text-sm font-medium">{user?.name}</span>
+                    <ChevronDown size={16} />
                   </button>
+                  
+                  {profileMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                      <Link
+                        to="/settings"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Настройки
+                      </Link>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 flex items-center space-x-2"
+                      >
+                        <LogOut size={16} />
+                        <span>Выйти</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (

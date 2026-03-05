@@ -94,22 +94,59 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-primary-600 text-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-4xl font-bold mb-6">
-            Готовы создать свой первый лендинг?
-          </h2>
-          <p className="text-xl mb-8 text-primary-100">
-            Присоединяйтесь к тысячам компаний, которые уже используют наш конструктор
-          </p>
-          <Link
-            to="/signup"
-            className="inline-flex items-center space-x-2 bg-white text-primary-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-100 transition"
-          >
-            <span>Начать бесплатно</span>
-            <ArrowRight size={20} />
-          </Link>
+      {/* Demo Template Section */}
+      <section className="py-20 bg-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-center mb-4">Демонстрационный шаблон</h2>
+          <p className="text-center text-gray-600 mb-12">Пример готового лендинга из нашей библиотеки</p>
+          
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            {/* Demo Landing Preview */}
+            <div className="bg-gradient-to-br from-blue-600 to-purple-700 text-white p-12 text-center">
+              <h1 className="text-4xl font-bold mb-4">TechSolutions</h1>
+              <p className="text-xl text-blue-100 mb-6">
+                Профессиональные IT-решения для вашего бизнеса
+              </p>
+              <button className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition">
+                Получить консультацию
+              </button>
+            </div>
+            
+            <div className="p-12">
+              <h2 className="text-2xl font-bold mb-6 text-center">Наши услуги</h2>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div className="text-center p-6 border border-gray-200 rounded-lg">
+                  <div className="text-4xl mb-3">💻</div>
+                  <h3 className="font-semibold mb-2">Разработка ПО</h3>
+                  <p className="text-sm text-gray-600">Создание решений под ключ</p>
+                </div>
+                <div className="text-center p-6 border border-gray-200 rounded-lg">
+                  <div className="text-4xl mb-3">☁️</div>
+                  <h3 className="font-semibold mb-2">Облачные сервисы</h3>
+                  <p className="text-sm text-gray-600">Миграция и поддержка</p>
+                </div>
+                <div className="text-center p-6 border border-gray-200 rounded-lg">
+                  <div className="text-4xl mb-3">🔒</div>
+                  <h3 className="font-semibold mb-2">Кибербезопасность</h3>
+                  <p className="text-sm text-gray-600">Защита ваших данных</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-8 text-center border-t border-gray-200">
+              <p className="text-sm text-gray-600">© 2026 TechSolutions. Пример шаблона из библиотеки</p>
+            </div>
+          </div>
+          
+          <div className="text-center mt-8">
+            <Link
+              to="/templates"
+              className="inline-flex items-center space-x-2 text-primary-600 hover:text-primary-700 font-medium"
+            >
+              <span>Посмотреть все шаблоны</span>
+              <ArrowRight size={18} />
+            </Link>
+          </div>
         </div>
       </section>
 
