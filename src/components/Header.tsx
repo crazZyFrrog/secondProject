@@ -1,18 +1,43 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { LogOut, LayoutDashboard, ChevronDown } from 'lucide-react'
 
 export default function Header() {
   const { isAuthenticated, user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const handleLogout = () => {
     logout()
     navigate('/')
     setProfileMenuOpen(false)
   }
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false)
+      }
+    }
+
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setProfileMenuOpen(false)
+      }
+    }
+
+    if (profileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleEscapeKey)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscapeKey)
+    }
+  }, [profileMenuOpen])
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
@@ -39,7 +64,7 @@ export default function Header() {
                   <span>Проекты</span>
                 </Link>
                 
-                <div className="relative">
+                <div className="relative" ref={menuRef}>
                   <button
                     onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                     className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition"
