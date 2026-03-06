@@ -9,6 +9,9 @@ export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
   const project = useProjectStore(state => state.getProjectById(id!))
   const updateProject = useProjectStore(state => state.updateProject)
+  const loadProjects = useProjectStore(state => state.loadProjects)
+  const loading = useProjectStore(state => state.isLoading)
+  const error = useProjectStore(state => state.error)
   const [activeSection, setActiveSection] = useState<Section>('company')
   const [formData, setFormData] = useState(project?.data || {
     company: { name: '', logo: '', description: '', mission: '', values: [] },
@@ -28,6 +31,12 @@ export default function EditorPage() {
     }
   }, [project])
 
+  useEffect(() => {
+    if (!project) {
+      loadProjects()
+    }
+  }, [project, loadProjects])
+
   const handleSave = () => {
     if (id) {
       updateProject(id, { data: formData })
@@ -45,6 +54,14 @@ export default function EditorPage() {
     { id: 'cases', name: 'Кейсы', progress: 0 },
     { id: 'faq', name: 'FAQ', progress: 0 }
   ]
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Загрузка проекта...</div>
+  }
+
+  if (error) {
+    return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>
+  }
 
   if (!project) {
     return <div className="min-h-screen flex items-center justify-center">Проект не найден</div>

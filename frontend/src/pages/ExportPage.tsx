@@ -1,24 +1,77 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import Header from '../components/Header'
 import { useProjectStore } from '../store/projectStore'
 import { Download, FileText, Code, File, ArrowLeft } from 'lucide-react'
+import { apiRequest, getAuthToken } from '../api/apiClient'
 
 type ExportFormat = 'pdf' | 'html' | 'docx'
 
 export default function ExportPage() {
   const { id } = useParams<{ id: string }>()
   const project = useProjectStore(state => state.getProjectById(id!))
+  const loadProjects = useProjectStore(state => state.loadProjects)
+  const loading = useProjectStore(state => state.isLoading)
+  const projectError = useProjectStore(state => state.error)
   const [format, setFormat] = useState<ExportFormat>('pdf')
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [history, setHistory] = useState<Array<{ date: string; format: string; size: string }>>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
-  const handleExport = () => {
+  useEffect(() => {
+    let isMounted = true
+    const loadHistory = async () => {
+      if (!id) return
+      setHistoryLoading(true)
+      setHistoryError(null)
+      try {
+        const token = getAuthToken()
+        const data = await apiRequest<Array<{ date: string; format: string; size: string }>>(
+          `/projects/${id}/exports`,
+          { token }
+        )
+        if (isMounted) {
+          setHistory(data)
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setHistoryError(err.message || 'Не удалось загрузить историю экспортов')
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false)
+        }
+      }
+    }
+    loadHistory()
+    return () => {
+      isMounted = false
+    }
+  }, [id])
+
+  const handleExport = async () => {
+    if (!id) return
     setExporting(true)
-    
-    setTimeout(() => {
-      alert(`Экспорт в ${format.toUpperCase()} завершен! (это демо-версия)`)
+    setExportError(null)
+    try {
+      const token = getAuthToken()
+      await apiRequest(`/projects/${id}/export`, {
+        method: 'POST',
+        token,
+        body: { format }
+      })
+      const data = await apiRequest<Array<{ date: string; format: string; size: string }>>(
+        `/projects/${id}/exports`,
+        { token }
+      )
+      setHistory(data)
+    } catch (err: any) {
+      setExportError(err.message || 'Не удалось выполнить экспорт')
+    } finally {
       setExporting(false)
-    }, 2000)
+    }
   }
 
   const formats = [
@@ -41,6 +94,20 @@ export default function ExportPage() {
       description: 'Документ Word для редактирования'
     }
   ]
+
+  useEffect(() => {
+    if (!project) {
+      loadProjects()
+    }
+  }, [project, loadProjects])
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Загрузка проекта...</div>
+  }
+
+  if (projectError) {
+    return <div className="min-h-screen flex items-center justify-center text-red-600">{projectError}</div>
+  }
 
   if (!project) {
     return <div className="min-h-screen flex items-center justify-center">Проект не найден</div>
@@ -141,6 +208,11 @@ export default function ExportPage() {
         </div>
 
         {/* Export Button */}
+        {exportError && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {exportError}
+          </div>
+        )}
         <button
           onClick={handleExport}
           disabled={exporting}
@@ -154,23 +226,28 @@ export default function ExportPage() {
         <div className="mt-12 bg-white rounded-xl shadow-sm p-8">
           <h2 className="text-xl font-semibold mb-6">История экспортов</h2>
           <div className="space-y-3">
-            {[
-              { date: '04 мар 2026', format: 'PDF', size: '2.3 MB' },
-              { date: '01 мар 2026', format: 'HTML', size: '1.1 MB' }
-            ].map((exp, idx) => (
-              <div key={idx} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-                <div className="flex items-center space-x-4">
-                  <FileText className="text-gray-400" size={24} />
-                  <div>
-                    <div className="font-medium text-gray-900">{exp.format}</div>
-                    <div className="text-sm text-gray-500">{exp.date} • {exp.size}</div>
+            {historyLoading ? (
+              <div className="text-gray-600">Загрузка истории...</div>
+            ) : historyError ? (
+              <div className="text-red-600">{historyError}</div>
+            ) : history.length === 0 ? (
+              <div className="text-gray-500 text-center py-6">Экспортов пока нет</div>
+            ) : (
+              history.map((exp, idx) => (
+                <div key={idx} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  <div className="flex items-center space-x-4">
+                    <FileText className="text-gray-400" size={24} />
+                    <div>
+                      <div className="font-medium text-gray-900">{exp.format}</div>
+                      <div className="text-sm text-gray-500">{exp.date} • {exp.size}</div>
+                    </div>
                   </div>
+                  <button className="text-primary-600 hover:text-primary-700 font-medium">
+                    Скачать
+                  </button>
                 </div>
-                <button className="text-primary-600 hover:text-primary-700 font-medium">
-                  Скачать
-                </button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

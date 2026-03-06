@@ -1,13 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import Header from '../components/Header'
 import { useProjectStore } from '../store/projectStore'
 import { Sparkles, ArrowLeft, Wand2 } from 'lucide-react'
+import { apiRequest } from '../api/apiClient'
 
 export default function AIGeneratePage() {
   const { id } = useParams<{ id: string }>()
   const project = useProjectStore(state => state.getProjectById(id!))
   const updateProject = useProjectStore(state => state.updateProject)
+  const loadProjects = useProjectStore(state => state.loadProjects)
+  const loading = useProjectStore(state => state.isLoading)
+  const projectError = useProjectStore(state => state.error)
   const navigate = useNavigate()
   
   const [companyName, setCompanyName] = useState('')
@@ -18,52 +22,29 @@ export default function AIGeneratePage() {
   const [generating, setGenerating] = useState(false)
   const [generated, setGenerated] = useState(false)
   const [generatedContent, setGeneratedContent] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleGenerate = () => {
+  useEffect(() => {
+    if (!project) {
+      loadProjects()
+    }
+  }, [project, loadProjects])
+
+  const handleGenerate = async () => {
     setGenerating(true)
-    
-    setTimeout(() => {
-      const mockGenerated = {
-        company: {
-          name: companyName,
-          logo: '',
-          description: `${companyName} - ведущая компания в сфере ${industry}. Мы предлагаем инновационные решения для наших клиентов, помогая им достигать бизнес-целей и оптимизировать процессы.`,
-          mission: `Делать ${industry} доступным и эффективным для каждого бизнеса`,
-          values: ['Инновации', 'Качество', 'Клиентоориентированность', 'Прозрачность']
-        },
-        products: products.split(',').map((p, idx) => ({
-          id: `prod-${idx}`,
-          name: p.trim(),
-          description: `Профессиональное решение для ${p.trim().toLowerCase()}`,
-          price: 'От 10 000 ₽',
-          image: `https://images.unsplash.com/photo-${1460925895917 + idx}?w=400`
-        })),
-        benefits: [
-          {
-            id: 'b1',
-            icon: '⚡',
-            title: 'Быстрое внедрение',
-            description: 'Запуск решения за 2-3 недели'
-          },
-          {
-            id: 'b2',
-            icon: '🎯',
-            title: 'Индивидуальный подход',
-            description: 'Решения под ваши задачи'
-          },
-          {
-            id: 'b3',
-            icon: '💼',
-            title: 'Опытная команда',
-            description: 'Более 10 лет на рынке'
-          }
-        ]
-      }
-      
-      setGeneratedContent(mockGenerated)
+    setError(null)
+    try {
+      const data = await apiRequest('/ai/generate', {
+        method: 'POST',
+        body: { companyName, industry, products, targetAudience, usp }
+      })
+      setGeneratedContent(data)
       setGenerated(true)
+    } catch (err: any) {
+      setError(err.message || 'Не удалось сгенерировать контент')
+    } finally {
       setGenerating(false)
-    }, 3000)
+    }
   }
 
   const handleApply = () => {
@@ -79,6 +60,14 @@ export default function AIGeneratePage() {
       alert('Контент применен к проекту!')
       navigate(`/projects/${id}/edit`)
     }
+  }
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Загрузка проекта...</div>
+  }
+
+  if (projectError) {
+    return <div className="min-h-screen flex items-center justify-center text-red-600">{projectError}</div>
   }
 
   if (!project) {
@@ -110,6 +99,11 @@ export default function AIGeneratePage() {
             </p>
 
             <div className="space-y-6">
+              {error && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {error}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Название компании *

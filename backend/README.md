@@ -1,77 +1,53 @@
 # Backend - Landing Constructor API
 
-Бэкенд для конструктора лендингов.
+Бэкенд для конструктора лендингов на FastAPI. Хранение данных — в памяти.
 
-## Планируемый стек
+## Стек
 
-- **Node.js** + **Express** или **NestJS**
-- **PostgreSQL** / **MongoDB** для базы данных
-- **JWT** для аутентификации
-- **OpenAI API** для AI-генерации контента
-- **AWS S3** / **Cloudinary** для хранения изображений
+- **FastAPI** + **Uvicorn**
+- **In-memory** хранилище (без БД)
 
-## Структура (планируется)
+## Структура
 
 ```
 backend/
-├── src/
-│   ├── controllers/     # Контроллеры API
-│   ├── models/          # Модели данных
-│   ├── routes/          # Роуты API
-│   ├── services/        # Бизнес-логика
-│   ├── middleware/      # Middleware (auth, validation)
-│   ├── config/          # Конфигурация
-│   └── utils/           # Утилиты
-├── package.json
+├── main.py
+├── requirements.txt
 └── README.md
 ```
 
-## API Endpoints (планируется)
-
-### Аутентификация
-- `POST /api/auth/register` - Регистрация
-- `POST /api/auth/login` - Вход
-- `POST /api/auth/logout` - Выход
-- `GET /api/auth/me` - Получить текущего пользователя
-
-### Проекты
-- `GET /api/projects` - Список проектов пользователя
-- `POST /api/projects` - Создать проект
-- `GET /api/projects/:id` - Получить проект
-- `PUT /api/projects/:id` - Обновить проект
-- `DELETE /api/projects/:id` - Удалить проект
-
-### Шаблоны
-- `GET /api/templates` - Список шаблонов
-- `GET /api/templates/:id` - Получить шаблон
-
-### AI-генерация
-- `POST /api/ai/generate` - Генерация контента через AI
-
-### Экспорт
-- `POST /api/export/pdf` - Экспорт в PDF
-- `POST /api/export/html` - Экспорт в HTML
-- `POST /api/export/docx` - Экспорт в DOCX
-
-## Установка (когда будет реализовано)
+## Запуск
 
 ```bash
 cd backend
-npm install
-npm run dev
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+set PORT=5000
+uvicorn main:app --reload --port 5000
 ```
 
-## Переменные окружения
+Откройте документацию: http://localhost:5000/docs
 
-```env
-PORT=5000
-DATABASE_URL=postgresql://...
-JWT_SECRET=your-secret-key
-OPENAI_API_KEY=your-openai-key
-AWS_ACCESS_KEY_ID=your-aws-key
-AWS_SECRET_ACCESS_KEY=your-aws-secret
-```
+## API Endpoints
 
----
+### Auth
+- `POST /auth/register` - Регистрация клиента
+- `POST /auth/login` - Вход (токен)
+- `POST /auth/logout` - Выход
 
-**Статус:** В разработке
+### Клиенты
+- `GET /clients/me` - Профиль текущего клиента
+- `PATCH /clients/me/plan` - Выбор тарифа
+
+### Тарифы
+- `GET /plans` - Список тарифов
+- `GET /plans/{plan_id}` - Детали тарифа
+- `POST /plans` - Создать тариф
+- `PATCH /plans/{plan_id}` - Обновить тариф
+- `DELETE /plans/{plan_id}` - Удалить тариф
+
+## Примечания
+
+- Все данные хранятся в памяти и теряются при перезапуске.
+- Авторизация по `Authorization: Bearer <token>`.

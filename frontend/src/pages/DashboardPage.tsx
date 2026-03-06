@@ -3,17 +3,24 @@ import Header from '../components/Header'
 import { useProjectStore } from '../store/projectStore'
 import { useAuthStore } from '../store/authStore'
 import { Plus, FileText, MoreVertical, Edit, Trash, Download } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function DashboardPage() {
   const projects = useProjectStore(state => state.projects)
   const deleteProject = useProjectStore(state => state.deleteProject)
+  const loadProjects = useProjectStore(state => state.loadProjects)
+  const loading = useProjectStore(state => state.isLoading)
+  const error = useProjectStore(state => state.error)
   const user = useAuthStore(state => state.user)
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
 
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
+
   const handleDelete = (id: string) => {
     if (confirm('Удалить проект?')) {
-      deleteProject(id)
+      deleteProject(id).catch(() => null)
     }
   }
 
@@ -72,7 +79,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Projects Grid */}
-        {projects.length === 0 ? (
+        {loading ? (
+          <div className="text-center text-gray-600">Загрузка проектов...</div>
+        ) : error ? (
+          <div className="text-center text-red-600">{error}</div>
+        ) : projects.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">

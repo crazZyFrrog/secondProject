@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { apiRequest, getAuthToken } from '../api/apiClient'
 
 export interface Project {
   id: string
@@ -70,79 +71,125 @@ export interface Project {
 interface ProjectState {
   projects: Project[]
   currentProject: Project | null
-  addProject: (project: Project) => void
-  updateProject: (id: string, updates: Partial<Project>) => void
-  deleteProject: (id: string) => void
+  isLoading: boolean
+  error: string | null
+  loadProjects: () => Promise<void>
+  addProject: (project: Project) => Promise<Project>
+  updateProject: (id: string, updates: Partial<Project>) => Promise<void>
+  deleteProject: (id: string) => Promise<void>
   setCurrentProject: (id: string) => void
   getProjectById: (id: string) => Project | undefined
 }
 
-// Mock projects
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: '1',
-    name: 'IT Консалтинг Проект',
-    templateId: 'modern-business',
-    createdAt: '2026-03-01T10:00:00Z',
-    updatedAt: '2026-03-04T15:30:00Z',
-    status: 'draft',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400',
-    data: {
-      company: {
-        name: 'TechSolutions',
-        logo: '',
-        description: 'Мы помогаем компаниям внедрять современные IT-решения',
-        mission: 'Делать технологии доступными для каждого бизнеса',
-        values: ['Инновации', 'Качество', 'Клиентоориентированность']
-      },
-      products: [],
-      audience: [],
-      benefits: [],
-      pricing: [],
-      contacts: { phone: '', email: '', address: '', socials: {} },
-      cases: [],
-      faq: []
-    }
-  }
-]
+type ApiProject = {
+  id: string
+  name: string
+  template_id: string
+  created_at: string
+  updated_at: string
+  status: 'draft' | 'completed'
+  thumbnail_url: string
+  data: Project['data']
+}
+
+const mapApiProject = (project: ApiProject): Project => ({
+  id: project.id,
+  name: project.name,
+  templateId: project.template_id,
+  createdAt: project.created_at,
+  updatedAt: project.updated_at,
+  status: project.status,
+  thumbnailUrl: project.thumbnail_url,
+  data: project.data
+})
+
+const toApiProjectPayload = (project: Project) => ({
+  name: project.name,
+  template_id: project.templateId,
+  status: project.status,
+  thumbnail_url: project.thumbnailUrl,
+  data: project.data
+})
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
-  projects: localStorage.getItem('projects') 
-    ? JSON.parse(localStorage.getItem('projects')!) 
-    : MOCK_PROJECTS,
+  projects: [],
   currentProject: null,
+  isLoading: false,
+  error: null,
   
-  addProject: (project) => {
-    set(state => {
-      const newProjects = [...state.projects, project]
-      localStorage.setItem('projects', JSON.stringify(newProjects))
-      return { projects: newProjects }
-    })
+  loadProjects: async () => {
+    set({ isLoading: true, error: null })
+    try {
+      const token = getAuthToken()
+      const data = await apiRequest<ApiProject[]>('/projects', { token })
+      set({ projects: data.map(mapApiProject), isLoading: false })
+    } catch (error: any) {
+      set({ isLoading: false, error: error.message || 'Не удалось загрузить проекты' })
+    }
   },
   
-  updateProject: (id, updates) => {
+  addProject: async (project) => {
+    set({ isLoading: true, error: null })
+    try {
+      const token = getAuthToken()
+      const created = await apiRequest<ApiProject>('/projects', {
+        method: 'POST',
+        token,
+        body: toApiProjectPayload(project)
+      })
+      const mapped = mapApiProject(created)
+      set(state => ({ projects: [...state.projects, mapped], isLoading: false }))
+      return mapped
+    } catch (error: any) {
+      set({ isLoading: false, error: error.message || 'Не удалось создать проект' })
+      throw error
+    }
+  },
+  
+  updateProject: async (id, updates) => {
     set(state => {
-      const newProjects = state.projects.map(p => 
+      const newProjects = state.projects.map(p =>
         p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
       )
-      localStorage.setItem('projects', JSON.stringify(newProjects))
-      return { 
+      return {
         projects: newProjects,
-        currentProject: state.currentProject?.id === id 
-          ? { ...state.currentProject, ...updates } 
+        currentProject: state.currentProject?.id === id
+          ? { ...state.currentProject, ...updates }
           : state.currentProject
       }
     })
+    try {
+      const token = getAuthToken()
+      await apiRequest(`/projects/${id}`, {
+        method: 'PATCH',
+        token,
+        body: {
+          name: updates.name,
+          status: updates.status,
+          thumbnail_url: updates.thumbnailUrl,
+          data: updates.data
+        }
+      })
+    } catch (error: any) {
+      set({ error: error.message || 'Не удалось обновить проект' })
+    }
   },
   
-  deleteProject: (id) => {
-    set(state => {
-      const newProjects = state.projects.filter(p => p.id !== id)
-      localStorage.setItem('projects', JSON.stringify(newProjects))
-      return { projects: newProjects }
-    })
+  deleteProject: async (id) => {
+    set({ isLoading: true, error: null })
+    try {
+      const token = getAuthToken()
+      await apiRequest(`/projects/${id}`, { method: 'DELETE', token })
+      set(state => ({
+        projects: state.projects.filter(p => p.id !== id),
+        isLoading: false
+      }))
+    } catch (error: any) {
+      set({ isLoading: false, error: error.message || 'Не удалось удалить проект' })
+      throw error
+    }
   },
-  
+
   setCurrentProject: (id) => {
     const project = get().projects.find(p => p.id === id)
     set({ currentProject: project || null })

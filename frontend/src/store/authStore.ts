@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { apiRequest, getAuthToken } from '../api/apiClient'
 
 interface User {
   id: string
@@ -11,55 +12,130 @@ interface User {
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
   login: (email: string, password: string) => Promise<void>
   signup: (name: string, email: string, password: string, plan: string) => Promise<void>
   logout: () => void
 }
 
-// Mock user data
-const MOCK_USER: User = {
-  id: '1',
-  name: 'Иван Петров',
-  email: 'ivan@example.com',
-  avatar: 'https://ui-avatars.com/api/?name=Ivan+Petrov&background=0ea5e9&color=fff',
-  subscription: 'free'
+type ApiClient = {
+  id: string
+  company_type: string
+  username: string
+  email: string
+  plan_id: string | null
 }
+
+type ApiPlan = {
+  id: string
+  name: string
+  features: string[]
+  limits: Record<string, number> | null
+}
+
+const subscriptionFromPlan = (planName: string | undefined) => {
+  if (!planName) return 'free'
+  const normalized = planName.toLowerCase()
+  if (normalized.includes('enterprise')) return 'enterprise'
+  if (normalized.includes('pro')) return 'pro'
+  return 'free'
+}
+
+const mapClientToUser = (client: ApiClient, planName?: string): User => ({
+  id: client.id,
+  name: client.username,
+  email: client.email,
+  avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(client.username)}&background=0ea5e9&color=fff`,
+  subscription: subscriptionFromPlan(planName)
+})
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!) : null,
   isAuthenticated: !!localStorage.getItem('user'),
+  isLoading: false,
+  error: null,
   
-  login: async (email: string, _password: string) => {
-    // Mock login - в реальном приложении здесь будет API запрос
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    const user = { ...MOCK_USER, email }
-    localStorage.setItem('user', JSON.stringify(user))
-    localStorage.setItem('token', 'mock-token-' + Date.now())
-    
-    set({ user, isAuthenticated: true })
+  login: async (email: string, password: string) => {
+    set({ isLoading: true, error: null })
+    try {
+      const auth = await apiRequest<{ token: string }>('/auth/login', {
+        method: 'POST',
+        body: { email, password }
+      })
+
+      localStorage.setItem('token', auth.token)
+      const client = await apiRequest<ApiClient>('/clients/me', {
+        token: auth.token
+      })
+
+      let planName: string | undefined
+      if (client.plan_id) {
+        const plans = await apiRequest<ApiPlan[]>('/plans')
+        planName = plans.find(plan => plan.id === client.plan_id)?.name
+      }
+
+      const user = mapClientToUser(client, planName)
+      localStorage.setItem('user', JSON.stringify(user))
+      set({ user, isAuthenticated: true, isLoading: false })
+    } catch (error: any) {
+      set({ isLoading: false, error: error.message || 'Ошибка входа' })
+      throw error
+    }
   },
   
-  signup: async (name: string, email: string, _password: string, plan: string) => {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    const user: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0ea5e9&color=fff`,
-      subscription: plan as 'free' | 'pro' | 'enterprise'
+  signup: async (name: string, email: string, password: string, plan: string) => {
+    set({ isLoading: true, error: null })
+    try {
+      const companyType = plan === 'enterprise' ? 'large' : 'small'
+      await apiRequest('/auth/register', {
+        method: 'POST',
+        body: {
+          company_type: companyType,
+          username: name,
+          email,
+          password,
+          confirm_password: password
+        }
+      })
+
+      const auth = await apiRequest<{ token: string }>('/auth/login', {
+        method: 'POST',
+        body: { email, password }
+      })
+
+      localStorage.setItem('token', auth.token)
+
+      const plans = await apiRequest<ApiPlan[]>('/plans')
+      const desiredPlanName = plan === 'pro' ? 'Pro' : plan === 'enterprise' ? 'Enterprise' : 'Starter'
+      const desiredPlan = plans.find(planItem => planItem.name.toLowerCase() === desiredPlanName.toLowerCase())
+      if (desiredPlan) {
+        await apiRequest('/clients/me/plan', {
+          method: 'PATCH',
+          token: auth.token,
+          body: { plan_id: desiredPlan.id }
+        })
+      }
+
+      const client = await apiRequest<ApiClient>('/clients/me', {
+        token: auth.token
+      })
+      const user = mapClientToUser(client, desiredPlan?.name)
+      localStorage.setItem('user', JSON.stringify(user))
+      set({ user, isAuthenticated: true, isLoading: false })
+    } catch (error: any) {
+      set({ isLoading: false, error: error.message || 'Ошибка регистрации' })
+      throw error
     }
-    
-    localStorage.setItem('user', JSON.stringify(user))
-    localStorage.setItem('token', 'mock-token-' + Date.now())
-    
-    set({ user, isAuthenticated: true })
   },
   
   logout: () => {
+    const token = getAuthToken()
+    if (token) {
+      apiRequest('/auth/logout', { method: 'POST', token }).catch(() => null)
+    }
     localStorage.removeItem('user')
     localStorage.removeItem('token')
-    set({ user: null, isAuthenticated: false })
+    set({ user: null, isAuthenticated: false, error: null })
   }
 }))

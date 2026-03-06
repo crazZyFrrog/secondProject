@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const login = useAuthStore(state => state.login)
+  const authError = useAuthStore(state => state.error)
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,7 +19,7 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/dashboard')
     } catch (error) {
-      alert('Ошибка входа')
+      // Ошибка отображается в UI
     } finally {
       setLoading(false)
     }
@@ -93,6 +94,12 @@ export default function LoginPage() {
                 Забыли пароль?
               </a>
             </div>
+
+            {authError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {authError}
+              </div>
+            )}
 
             <button
               type="submit"

@@ -1,12 +1,29 @@
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useProjectStore } from '../store/projectStore'
 import { ArrowLeft, Monitor, Tablet, Smartphone } from 'lucide-react'
-import { useState } from 'react'
 
 export default function PreviewPage() {
   const { id } = useParams<{ id: string }>()
   const project = useProjectStore(state => state.getProjectById(id!))
+  const loadProjects = useProjectStore(state => state.loadProjects)
+  const loading = useProjectStore(state => state.isLoading)
+  const error = useProjectStore(state => state.error)
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop')
+
+  useEffect(() => {
+    if (!project) {
+      loadProjects()
+    }
+  }, [project, loadProjects])
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Загрузка проекта...</div>
+  }
+
+  if (error) {
+    return <div className="min-h-screen flex items-center justify-center text-red-600">{error}</div>
+  }
 
   if (!project) {
     return <div className="min-h-screen flex items-center justify-center">Проект не найден</div>

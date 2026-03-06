@@ -3,6 +3,15 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { UserPlus } from 'lucide-react'
 
+type FieldErrors = Partial<{
+  name: string
+  email: string
+  password: string
+  confirmPassword: string
+  plan: string
+  agreed: string
+}>
+
 export default function SignupPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -11,29 +20,65 @@ export default function SignupPage() {
   const [plan, setPlan] = useState('free')
   const [agreed, setAgreed] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const signup = useAuthStore(state => state.signup)
+  const authError = useAuthStore(state => state.error)
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (password !== confirmPassword) {
-      alert('Пароли не совпадают')
-      return
+
+    const nextErrors: FieldErrors = {}
+    if (!name.trim()) {
+      nextErrors.name = 'Введите имя'
+    } else if (name.length > 30) {
+      nextErrors.name = 'Максимум 30 символов'
     }
-    
+    if (!email.trim()) {
+      nextErrors.email = 'Введите email'
+    } else if (email.length > 30) {
+      nextErrors.email = 'Максимум 30 символов'
+    } else if (!email.includes('@')) {
+      nextErrors.email = 'Email должен содержать @'
+    }
+    if (!password) {
+      nextErrors.password = 'Введите пароль'
+    } else if (password.length > 30) {
+      nextErrors.password = 'Максимум 30 символов'
+    }
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = 'Подтвердите пароль'
+    } else if (confirmPassword.length > 30) {
+      nextErrors.confirmPassword = 'Максимум 30 символов'
+    } else if (password !== confirmPassword) {
+      nextErrors.confirmPassword = 'Пароли не совпадают'
+    }
     if (!agreed) {
-      alert('Необходимо согласиться с условиями использования')
+      nextErrors.agreed = 'Нужно согласиться с условиями'
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors)
       return
     }
-    
+
     setLoading(true)
+    setFieldErrors({})
     
     try {
       await signup(name, email, password, plan)
       navigate('/dashboard')
-    } catch (error) {
-      alert('Ошибка регистрации')
+    } catch (error: any) {
+      const apiFieldErrors = error?.fieldErrors as Record<string, string> | undefined
+      if (apiFieldErrors) {
+        const mapped: FieldErrors = {}
+        if (apiFieldErrors.username) mapped.name = apiFieldErrors.username
+        if (apiFieldErrors.email) mapped.email = apiFieldErrors.email
+        if (apiFieldErrors.password) mapped.password = apiFieldErrors.password
+        if (apiFieldErrors.confirm_password) mapped.confirmPassword = apiFieldErrors.confirm_password
+        if (apiFieldErrors.company_type) mapped.plan = apiFieldErrors.company_type
+        setFieldErrors(mapped)
+      }
     } finally {
       setLoading(false)
     }
@@ -75,6 +120,9 @@ export default function SignupPage() {
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 placeholder="Иван Петров"
               />
+              {fieldErrors.name && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.name}</p>
+              )}
             </div>
 
             <div>
@@ -90,6 +138,9 @@ export default function SignupPage() {
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 placeholder="ivan@example.com"
               />
+              {fieldErrors.email && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div>
@@ -105,6 +156,9 @@ export default function SignupPage() {
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 placeholder="••••••••"
               />
+              {fieldErrors.password && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.password}</p>
+              )}
             </div>
 
             <div>
@@ -120,6 +174,9 @@ export default function SignupPage() {
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                 placeholder="••••••••"
               />
+              {fieldErrors.confirmPassword && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.confirmPassword}</p>
+              )}
             </div>
 
             <div>
@@ -152,6 +209,9 @@ export default function SignupPage() {
                   <div className="text-xs text-gray-600">Безлимит</div>
                 </button>
               </div>
+              {fieldErrors.plan && (
+                <p className="mt-2 text-sm text-red-600">{fieldErrors.plan}</p>
+              )}
             </div>
 
             <div className="flex items-start">
@@ -173,6 +233,15 @@ export default function SignupPage() {
                 </a>
               </label>
             </div>
+            {fieldErrors.agreed && (
+              <p className="text-sm text-red-600">{fieldErrors.agreed}</p>
+            )}
+
+            {authError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {authError}
+              </div>
+            )}
 
             <button
               type="submit"
