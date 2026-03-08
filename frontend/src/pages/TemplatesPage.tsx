@@ -90,6 +90,10 @@ export default function TemplatesPage() {
           <div className="text-center text-gray-600">Загрузка шаблонов...</div>
         ) : error ? (
           <div className="text-center text-red-600">{error}</div>
+        ) : templates.length === 0 ? (
+          <div className="text-center text-gray-600">
+            Шаблоны пока не добавлены. Запустите `python seed_db.py`, чтобы загрузить демо-данные.
+          </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredTemplates.map(template => (

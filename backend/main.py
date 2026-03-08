@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
-from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from db import get_connection, init_db
+from seed_db import seed
 
 
 app = FastAPI(title="Landing Constructor API")
@@ -23,145 +26,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+init_db()
+seed()
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return {"message": "API работает. Откройте /docs для документации."}
 
 # -----------------------------
-# In-memory storage
+# Helpers
 # -----------------------------
 
 
-@dataclass
-class Client:
-    id: str
-    company_type: str
-    username: str
-    email: str
-    password_hash: str
-    plan_id: Optional[str]
+def now_iso() -> str:
+    return datetime.utcnow().isoformat() + "Z"
 
 
-@dataclass
-class Plan:
-    id: str
-    name: str
-    features: List[str]
-    limits: Optional[Dict[str, int]]
+def parse_json(value: Optional[str], default):
+    if value is None:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return default
 
 
-@dataclass
-class Template:
-    id: str
-    name: str
-    category: str
-    is_premium: bool
-    preview_image: str
-    description: str
+def plan_from_row(row) -> Dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "features": parse_json(row["features"], []),
+        "limits": parse_json(row["limits"], None),
+    }
 
 
-@dataclass
-class Project:
-    id: str
-    client_id: str
-    name: str
-    template_id: str
-    created_at: str
-    updated_at: str
-    status: str
-    thumbnail_url: str
-    data: Dict[str, object]
+def template_from_row(row) -> Dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "category": row["category"],
+        "is_premium": bool(row["is_premium"]),
+        "preview_image": row["preview_image"],
+        "description": row["description"],
+    }
 
 
-clients_by_id: Dict[str, Client] = {}
-clients_by_email: Dict[str, Client] = {}
-plans_by_id: Dict[str, Plan] = {}
-tokens_to_client_id: Dict[str, str] = {}
-templates_by_id: Dict[str, Template] = {}
-projects_by_id: Dict[str, Project] = {}
-exports_by_project_id: Dict[str, List[Dict[str, str]]] = {}
-notifications_by_client_id: Dict[str, List[Dict[str, object]]] = {}
-
-
-def seed_plans() -> None:
-    starter = Plan(
-        id=str(uuid4()),
-        name="Starter",
-        features=["Templates: 3", "Projects: 1", "Exports: HTML"],
-        limits={"projects": 1, "templates": 3},
-    )
-    pro = Plan(
-        id=str(uuid4()),
-        name="Pro",
-        features=["Templates: 12", "Projects: 10", "Exports: HTML/PDF/DOCX"],
-        limits={"projects": 10, "templates": 12},
-    )
-    enterprise = Plan(
-        id=str(uuid4()),
-        name="Enterprise",
-        features=["Unlimited templates", "Unlimited projects", "Priority support"],
-        limits=None,
-    )
-    for plan in (starter, pro, enterprise):
-        plans_by_id[plan.id] = plan
-
-
-seed_plans()
-
-
-def seed_templates() -> None:
-    templates = [
-        Template(
-            id="modern-business",
-            name="Современный Бизнес",
-            category="Бизнес",
-            is_premium=False,
-            preview_image="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600",
-            description="Минималистичный шаблон для B2B компаний",
-        ),
-        Template(
-            id="creative-agency",
-            name="Креативное Агентство",
-            category="Дизайн",
-            is_premium=True,
-            preview_image="https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600",
-            description="Яркий шаблон для креативных студий",
-        ),
-        Template(
-            id="tech-startup",
-            name="Tech Стартап",
-            category="IT",
-            is_premium=False,
-            preview_image="https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=600",
-            description="Современный шаблон для технологических компаний",
-        ),
-        Template(
-            id="medical-clinic",
-            name="Медицинская Клиника",
-            category="Медицина",
-            is_premium=True,
-            preview_image="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=600",
-            description="Профессиональный шаблон для медицинских учреждений",
-        ),
-        Template(
-            id="real-estate",
-            name="Недвижимость",
-            category="Недвижимость",
-            is_premium=False,
-            preview_image="https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=600",
-            description="Элегантный шаблон для агентств недвижимости",
-        ),
-        Template(
-            id="education",
-            name="Образовательный Центр",
-            category="Образование",
-            is_premium=True,
-            preview_image="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600",
-            description="Дружелюбный шаблон для образовательных проектов",
-        ),
-    ]
-    for template in templates:
-        templates_by_id[template.id] = template
-
-
-seed_templates()
+def project_from_row(row) -> Dict[str, object]:
+    return {
+        "id": row["id"],
+        "client_id": row["client_id"],
+        "name": row["name"],
+        "template_id": row["template_id"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "status": row["status"],
+        "thumbnail_url": row["thumbnail_url"],
+        "data": parse_json(row["data"], {}),
+    }
 
 
 # -----------------------------
@@ -229,6 +151,10 @@ class NotificationsUpdateRequest(BaseModel):
     notifications: List[Dict[str, object]]
 
 
+class PasswordUpdateRequest(BaseModel):
+    password: str
+
+
 class ErrorResponse(BaseModel):
     message: str
     fieldErrors: Optional[Dict[str, str]] = None
@@ -236,11 +162,6 @@ class ErrorResponse(BaseModel):
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-
-def now_iso() -> str:
-    return datetime.utcnow().isoformat() + "Z"
-
 
 def validate_registration_payload(payload: RegisterRequest) -> None:
     field_errors: Dict[str, str] = {}
@@ -277,38 +198,75 @@ def validate_registration_payload(payload: RegisterRequest) -> None:
         )
 
 
-def get_client_from_token(authorization: Optional[str] = Header(None)) -> Client:
+def validate_password(password: str) -> None:
+    if password.strip() == "":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "Validation error", "fieldErrors": {"password": "Field is required"}},
+        )
+    if len(password) > 30:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "Validation error", "fieldErrors": {"password": "Must be 30 characters or less"}},
+        )
+
+
+def get_client_from_token(authorization: Optional[str] = Header(None)) -> Dict[str, object]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"message": "Unauthorized"},
         )
     token = authorization.replace("Bearer ", "").strip()
-    client_id = tokens_to_client_id.get(token)
-    if not client_id or client_id not in clients_by_id:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT c.id, c.company_type, c.username, c.email, c.plan_id
+            FROM auth_tokens t
+            JOIN clients c ON c.id = t.client_id
+            WHERE t.token = ?
+            """,
+            (token,),
+        ).fetchone()
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"message": "Unauthorized"},
         )
-    return clients_by_id[client_id]
+    return dict(row)
 
 
-def get_project_for_client(project_id: str, client: Client) -> Project:
-    project = projects_by_id.get(project_id)
-    if not project or project.client_id != client.id:
+def get_project_for_client(project_id: str, client_id: str) -> Dict[str, object]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM projects
+            WHERE id = ? AND client_id = ?
+            """,
+            (project_id, client_id),
+        ).fetchone()
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Project not found"},
         )
-    return project
+    return project_from_row(row)
 
 
-def get_project_limit(client: Client) -> Optional[int]:
-    plan = plans_by_id.get(client.plan_id) if client.plan_id else None
-    if plan and plan.limits and "projects" in plan.limits:
-        return plan.limits["projects"]
-    if client.plan_id is None:
+def get_project_limit(plan_id: Optional[str]) -> Optional[int]:
+    if not plan_id:
         return 3
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT limits FROM plans WHERE id = ?",
+            (plan_id,),
+        ).fetchone()
+    if not row:
+        return 3
+    limits = parse_json(row["limits"], None)
+    if isinstance(limits, dict) and "projects" in limits:
+        return limits["projects"]
     return None
 
 
@@ -321,50 +279,78 @@ def get_project_limit(client: Client) -> Optional[int]:
 def register(payload: RegisterRequest):
     validate_registration_payload(payload)
 
-    if payload.email in clients_by_email:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"message": "Email already registered"},
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM clients WHERE email = ?",
+            (payload.email.strip(),),
+        ).fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": "Email already registered"},
+            )
+
+        client_id = str(uuid4())
+        conn.execute(
+            """
+            INSERT INTO clients (id, company_type, username, email, password_hash, plan_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                client_id,
+                payload.company_type,
+                payload.username.strip(),
+                payload.email.strip(),
+                hash_password(payload.password),
+                None,
+                now_iso(),
+            ),
         )
 
-    client = Client(
-        id=str(uuid4()),
-        company_type=payload.company_type,
-        username=payload.username.strip(),
-        email=payload.email.strip(),
-        password_hash=hash_password(payload.password),
-        plan_id=None,
-    )
-    clients_by_id[client.id] = client
-    clients_by_email[client.email] = client
-
     return {
-        "id": client.id,
-        "company_type": client.company_type,
-        "username": client.username,
-        "email": client.email,
-        "plan_id": client.plan_id,
+        "id": client_id,
+        "company_type": payload.company_type,
+        "username": payload.username.strip(),
+        "email": payload.email.strip(),
+        "plan_id": None,
     }
 
 
 @api_router.post("/auth/login")
 def login(payload: LoginRequest):
-    client = clients_by_email.get(payload.email)
-    if not client or client.password_hash != hash_password(payload.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"message": "Invalid credentials"},
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, password_hash
+            FROM clients
+            WHERE email = ?
+            """,
+            (payload.email.strip(),),
+        ).fetchone()
+
+        if not row or row["password_hash"] != hash_password(payload.password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"message": "Invalid credentials"},
+            )
+
+        token = secrets.token_urlsafe(24)
+        conn.execute(
+            """
+            INSERT INTO auth_tokens (token, client_id, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (token, row["id"], now_iso()),
         )
 
-    token = secrets.token_urlsafe(24)
-    tokens_to_client_id[token] = client.id
     return {"token": token}
 
 
 @api_router.post("/auth/logout")
-def logout(client: Client = Depends(get_client_from_token), authorization: str = Header(...)):
+def logout(client: Dict[str, object] = Depends(get_client_from_token), authorization: str = Header(...)):
     token = authorization.replace("Bearer ", "").strip()
-    tokens_to_client_id.pop(token, None)
+    with get_connection() as conn:
+        conn.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
     return {"message": "Logged out"}
 
 
@@ -374,27 +360,44 @@ def logout(client: Client = Depends(get_client_from_token), authorization: str =
 
 
 @api_router.get("/clients/me")
-def get_me(client: Client = Depends(get_client_from_token)):
+def get_me(client: Dict[str, object] = Depends(get_client_from_token)):
     return {
-        "id": client.id,
-        "company_type": client.company_type,
-        "username": client.username,
-        "email": client.email,
-        "plan_id": client.plan_id,
+        "id": client["id"],
+        "company_type": client["company_type"],
+        "username": client["username"],
+        "email": client["email"],
+        "plan_id": client["plan_id"],
     }
 
 
 @api_router.patch("/clients/me/plan")
-def select_plan(payload: PlanSelectRequest, client: Client = Depends(get_client_from_token)):
-    if payload.plan_id not in plans_by_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Plan not found"},
+def select_plan(payload: PlanSelectRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        plan = conn.execute(
+            "SELECT 1 FROM plans WHERE id = ?",
+            (payload.plan_id,),
+        ).fetchone()
+        if not plan:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Plan not found"},
+            )
+        conn.execute(
+            "UPDATE clients SET plan_id = ? WHERE id = ?",
+            (payload.plan_id, client["id"]),
         )
-    client.plan_id = payload.plan_id
-    clients_by_id[client.id] = client
-    clients_by_email[client.email] = client
     return {"message": "Plan updated", "plan_id": payload.plan_id}
+
+
+@api_router.patch("/clients/me/password", responses={422: {"model": ErrorResponse}})
+def update_password(payload: PasswordUpdateRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    validate_password(payload.password)
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE clients SET password_hash = ? WHERE id = ?",
+            (hash_password(payload.password), client["id"]),
+        )
+    return {"message": "Password updated"}
 
 
 # -----------------------------
@@ -404,58 +407,85 @@ def select_plan(payload: PlanSelectRequest, client: Client = Depends(get_client_
 
 @api_router.get("/plans")
 def list_plans():
-    return [asdict(plan) for plan in plans_by_id.values()]
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM plans").fetchall()
+    return [plan_from_row(row) for row in rows]
 
 
 @api_router.get("/plans/{plan_id}")
 def get_plan(plan_id: str):
-    plan = plans_by_id.get(plan_id)
-    if not plan:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Plan not found"},
         )
-    return asdict(plan)
+    return plan_from_row(row)
 
 
 @api_router.post("/plans")
 def create_plan(payload: PlanCreateRequest):
-    plan = Plan(
-        id=str(uuid4()),
-        name=payload.name.strip(),
-        features=payload.features,
-        limits=payload.limits,
-    )
-    plans_by_id[plan.id] = plan
-    return asdict(plan)
+    plan_id = str(uuid4())
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO plans (id, name, features, limits)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                plan_id,
+                payload.name.strip(),
+                json.dumps(payload.features, ensure_ascii=False),
+                json.dumps(payload.limits, ensure_ascii=False) if payload.limits is not None else None,
+            ),
+        )
+        row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    return plan_from_row(row)
 
 
 @api_router.patch("/plans/{plan_id}")
 def update_plan(plan_id: str, payload: PlanUpdateRequest):
-    plan = plans_by_id.get(plan_id)
-    if not plan:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Plan not found"},
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Plan not found"},
+            )
+        name = payload.name.strip() if payload.name is not None else row["name"]
+        features = (
+            json.dumps(payload.features, ensure_ascii=False)
+            if payload.features is not None
+            else row["features"]
         )
-    if payload.name is not None:
-        plan.name = payload.name.strip()
-    if payload.features is not None:
-        plan.features = payload.features
-    if payload.limits is not None:
-        plan.limits = payload.limits
-    plans_by_id[plan.id] = plan
-    return asdict(plan)
+        limits = (
+            json.dumps(payload.limits, ensure_ascii=False)
+            if payload.limits is not None
+            else row["limits"]
+        )
+        conn.execute(
+            """
+            UPDATE plans
+            SET name = ?, features = ?, limits = ?
+            WHERE id = ?
+            """,
+            (name, features, limits, plan_id),
+        )
+        updated = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+    return plan_from_row(updated)
 
 
 @api_router.delete("/plans/{plan_id}")
 def delete_plan(plan_id: str):
-    if plan_id not in plans_by_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Plan not found"},
-        )
-    plans_by_id.pop(plan_id)
+    with get_connection() as conn:
+        row = conn.execute("SELECT 1 FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"message": "Plan not found"},
+            )
+        conn.execute("DELETE FROM plans WHERE id = ?", (plan_id,))
     return {"message": "Plan deleted"}
 
 
@@ -466,18 +496,21 @@ def delete_plan(plan_id: str):
 
 @api_router.get("/templates")
 def list_templates():
-    return [asdict(template) for template in templates_by_id.values()]
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM templates").fetchall()
+    return [template_from_row(row) for row in rows]
 
 
 @api_router.get("/templates/{template_id}")
 def get_template(template_id: str):
-    template = templates_by_id.get(template_id)
-    if not template:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM templates WHERE id = ?", (template_id,)).fetchone()
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"message": "Template not found"},
         )
-    return asdict(template)
+    return template_from_row(row)
 
 
 # -----------------------------
@@ -486,70 +519,100 @@ def get_template(template_id: str):
 
 
 @api_router.get("/projects")
-def list_projects(client: Client = Depends(get_client_from_token)):
-    return [
-        asdict(project)
-        for project in projects_by_id.values()
-        if project.client_id == client.id
-    ]
+def list_projects(client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM projects WHERE client_id = ?",
+            (client["id"],),
+        ).fetchall()
+    return [project_from_row(row) for row in rows]
 
 
 @api_router.post("/projects")
-def create_project(payload: ProjectCreateRequest, client: Client = Depends(get_client_from_token)):
-    project_limit = get_project_limit(client)
-    if project_limit is not None:
-        current_count = sum(
-            1 for project in projects_by_id.values() if project.client_id == client.id
+def create_project(payload: ProjectCreateRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    project_limit = get_project_limit(client.get("plan_id"))
+    with get_connection() as conn:
+        if project_limit is not None:
+            current_count = conn.execute(
+                "SELECT COUNT(1) AS cnt FROM projects WHERE client_id = ?",
+                (client["id"],),
+            ).fetchone()["cnt"]
+            if current_count >= project_limit:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={"message": "Project limit reached for current plan"},
+                )
+
+        project_id = str(uuid4())
+        timestamp = now_iso()
+        conn.execute(
+            """
+            INSERT INTO projects (
+                id, client_id, name, template_id, created_at, updated_at, status, thumbnail_url, data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                client["id"],
+                payload.name.strip(),
+                payload.template_id,
+                timestamp,
+                timestamp,
+                payload.status,
+                payload.thumbnail_url,
+                json.dumps(payload.data, ensure_ascii=False),
+            ),
         )
-        if current_count >= project_limit:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={"message": "Project limit reached for current plan"},
-            )
-    project_id = str(uuid4())
-    timestamp = now_iso()
-    project = Project(
-        id=project_id,
-        client_id=client.id,
-        name=payload.name.strip(),
-        template_id=payload.template_id,
-        created_at=timestamp,
-        updated_at=timestamp,
-        status=payload.status,
-        thumbnail_url=payload.thumbnail_url,
-        data=payload.data,
-    )
-    projects_by_id[project_id] = project
-    return asdict(project)
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return project_from_row(row)
 
 
 @api_router.get("/projects/{project_id}")
-def get_project(project_id: str, client: Client = Depends(get_client_from_token)):
-    project = get_project_for_client(project_id, client)
-    return asdict(project)
+def get_project(project_id: str, client: Dict[str, object] = Depends(get_client_from_token)):
+    project = get_project_for_client(project_id, client["id"])
+    return project
 
 
 @api_router.patch("/projects/{project_id}")
-def update_project(project_id: str, payload: ProjectUpdateRequest, client: Client = Depends(get_client_from_token)):
-    project = get_project_for_client(project_id, client)
-    if payload.name is not None:
-        project.name = payload.name.strip()
-    if payload.status is not None:
-        project.status = payload.status
-    if payload.thumbnail_url is not None:
-        project.thumbnail_url = payload.thumbnail_url
-    if payload.data is not None:
-        project.data = payload.data
-    project.updated_at = now_iso()
-    projects_by_id[project_id] = project
-    return asdict(project)
+def update_project(project_id: str, payload: ProjectUpdateRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    existing = get_project_for_client(project_id, client["id"])
+    updated_name = payload.name.strip() if payload.name is not None else existing["name"]
+    updated_status = payload.status if payload.status is not None else existing["status"]
+    updated_thumbnail = (
+        payload.thumbnail_url if payload.thumbnail_url is not None else existing["thumbnail_url"]
+    )
+    updated_data = payload.data if payload.data is not None else existing["data"]
+    updated_at = now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE projects
+            SET name = ?, status = ?, thumbnail_url = ?, data = ?, updated_at = ?
+            WHERE id = ? AND client_id = ?
+            """,
+            (
+                updated_name,
+                updated_status,
+                updated_thumbnail,
+                json.dumps(updated_data, ensure_ascii=False),
+                updated_at,
+                project_id,
+                client["id"],
+            ),
+        )
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return project_from_row(row)
 
 
 @api_router.delete("/projects/{project_id}")
-def delete_project(project_id: str, client: Client = Depends(get_client_from_token)):
-    project = get_project_for_client(project_id, client)
-    projects_by_id.pop(project.id)
-    exports_by_project_id.pop(project_id, None)
+def delete_project(project_id: str, client: Dict[str, object] = Depends(get_client_from_token)):
+    get_project_for_client(project_id, client["id"])
+    with get_connection() as conn:
+        conn.execute("DELETE FROM exports WHERE project_id = ?", (project_id,))
+        conn.execute(
+            "DELETE FROM projects WHERE id = ? AND client_id = ?",
+            (project_id, client["id"]),
+        )
     return {"message": "Project deleted"}
 
 
@@ -609,23 +672,37 @@ def ai_generate(payload: AiGenerateRequest):
 
 
 @api_router.post("/projects/{project_id}/export")
-def export_project(project_id: str, payload: ExportRequest, client: Client = Depends(get_client_from_token)):
-    get_project_for_client(project_id, client)
-    history = exports_by_project_id.setdefault(project_id, [])
-    history.append(
-        {
-            "date": datetime.utcnow().strftime("%d %b %Y"),
-            "format": payload.format.upper(),
-            "size": "1.2 MB",
-        }
-    )
+def export_project(project_id: str, payload: ExportRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    get_project_for_client(project_id, client["id"])
+    export_id = str(uuid4())
+    created_at = now_iso()
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO exports (id, project_id, format, size, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (export_id, project_id, payload.format.upper(), "1.2 MB", created_at),
+        )
     return {"message": f"Export to {payload.format} queued"}
 
 
 @api_router.get("/projects/{project_id}/exports")
-def export_history(project_id: str, client: Client = Depends(get_client_from_token)):
-    get_project_for_client(project_id, client)
-    return exports_by_project_id.get(project_id, [])
+def export_history(project_id: str, client: Dict[str, object] = Depends(get_client_from_token)):
+    get_project_for_client(project_id, client["id"])
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT format, size, created_at FROM exports WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+    return [
+        {
+            "date": datetime.fromisoformat(row["created_at"].replace("Z", "")).strftime("%d %b %Y"),
+            "format": row["format"],
+            "size": row["size"],
+        }
+        for row in rows
+    ]
 
 
 # -----------------------------
@@ -634,41 +711,105 @@ def export_history(project_id: str, client: Client = Depends(get_client_from_tok
 
 
 @api_router.get("/clients/me/subscription")
-def get_subscription(client: Client = Depends(get_client_from_token)):
-    plan = plans_by_id.get(client.plan_id) if client.plan_id else None
-    client_projects = [project.id for project in projects_by_id.values() if project.client_id == client.id]
-    projects_count = len(client_projects)
-    exports_count = sum(
-        len(exports_by_project_id.get(project_id, [])) for project_id in client_projects
-    )
+def get_subscription(client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        plan_row = None
+        if client["plan_id"]:
+            plan_row = conn.execute(
+                "SELECT * FROM plans WHERE id = ?",
+                (client["plan_id"],),
+            ).fetchone()
+
+        projects_count = conn.execute(
+            "SELECT COUNT(1) AS cnt FROM projects WHERE client_id = ?",
+            (client["id"],),
+        ).fetchone()["cnt"]
+
+        exports_count = conn.execute(
+            """
+            SELECT COUNT(1) AS cnt
+            FROM exports e
+            JOIN projects p ON p.id = e.project_id
+            WHERE p.client_id = ?
+            """,
+            (client["id"],),
+        ).fetchone()["cnt"]
+
+    plan_name = plan_row["name"] if plan_row else "Free"
+    limits = parse_json(plan_row["limits"], None) if plan_row else {"projects": 3, "exports": 10}
     return {
-        "plan_name": plan.name if plan else "Free",
-        "limits": plan.limits if plan else {"projects": 3, "exports": 10},
+        "plan_name": plan_name,
+        "limits": limits,
         "usage": {"projects": projects_count, "exports": exports_count},
         "expires_at": None,
     }
 
 
 @api_router.get("/clients/me/payments")
-def get_payments(client: Client = Depends(get_client_from_token)):
-    return []
+def get_payments(client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT paid_at, amount, status
+            FROM payments
+            WHERE client_id = ?
+            ORDER BY paid_at DESC
+            """,
+            (client["id"],),
+        ).fetchall()
+    return [{"date": row["paid_at"], "amount": row["amount"], "status": row["status"]} for row in rows]
 
 
 @api_router.get("/clients/me/notifications")
-def get_notifications(client: Client = Depends(get_client_from_token)):
-    if client.id not in notifications_by_client_id:
-        notifications_by_client_id[client.id] = [
-            {"label": "Email уведомления о новых функциях", "checked": True},
-            {"label": "Уведомления об экспорте проектов", "checked": True},
-            {"label": "Маркетинговые рассылки", "checked": False},
-            {"label": "Советы по использованию платформы", "checked": True},
-        ]
-    return notifications_by_client_id[client.id]
+def get_notifications(client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, label, checked FROM notifications WHERE client_id = ?",
+            (client["id"],),
+        ).fetchall()
+        if not rows:
+            defaults = [
+                ("Email уведомления о новых функциях", True),
+                ("Уведомления об экспорте проектов", True),
+                ("Маркетинговые рассылки", False),
+                ("Советы по использованию платформы", True),
+            ]
+            for label, checked in defaults:
+                conn.execute(
+                    """
+                    INSERT INTO notifications (id, client_id, label, checked)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (str(uuid4()), client["id"], label, int(checked)),
+                )
+            rows = conn.execute(
+                "SELECT id, label, checked FROM notifications WHERE client_id = ?",
+                (client["id"],),
+            ).fetchall()
+
+    return [{"label": row["label"], "checked": bool(row["checked"])} for row in rows]
 
 
 @api_router.patch("/clients/me/notifications")
-def update_notifications(payload: NotificationsUpdateRequest, client: Client = Depends(get_client_from_token)):
-    notifications_by_client_id[client.id] = payload.notifications
+def update_notifications(payload: NotificationsUpdateRequest, client: Dict[str, object] = Depends(get_client_from_token)):
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM notifications WHERE client_id = ?",
+            (client["id"],),
+        )
+        for item in payload.notifications:
+            conn.execute(
+                """
+                INSERT INTO notifications (id, client_id, label, checked)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    str(uuid4()),
+                    client["id"],
+                    str(item.get("label", "")),
+                    int(bool(item.get("checked", False))),
+                ),
+            )
     return {"message": "Notifications updated"}
 
 

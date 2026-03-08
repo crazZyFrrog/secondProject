@@ -11,7 +11,7 @@ secondProject/
 │   ├── package.json
 │   └── README.md
 │
-├── backend/           # Node.js API (в разработке)
+├── backend/           # FastAPI + SQLite
 │   └── README.md
 │
 └── README.md         # Этот файл
@@ -33,8 +33,14 @@ npm run dev
 
 ```bash
 cd backend
-# В разработке
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python seed_db.py
+python -m uvicorn main:app --reload --port 5000
 ```
+
+Откройте документацию: http://localhost:5000/docs
 
 ## 🎯 Возможности
 
@@ -51,8 +57,9 @@ cd backend
 - ✅ Улучшенная навигация профиля
 
 ### В разработке
-- 🔄 Backend API
-- 🔄 База данных
+- 🔄 Реальная AI-генерация
+- 🔄 Реальный экспорт документов
+- 🔄 Система платежей
 - 🔄 Реальная AI-генерация
 - 🔄 Реальный экспорт документов
 - 🔄 Система платежей
@@ -73,12 +80,10 @@ cd backend
 - Zustand (state management)
 - Vite
 
-### Backend (планируется)
-- Node.js + Express/NestJS
-- PostgreSQL/MongoDB
-- JWT Authentication
-- OpenAI API
-- AWS S3
+### Backend
+- FastAPI + Uvicorn
+- SQLite (локальный файл)
+- JWT‑подобные токены
 
 ## 📝 Лицензия
 
@@ -87,4 +92,4 @@ MIT
 ---
 
 **Версия:** V2  
-**Статус:** Frontend готов, Backend в разработке
+**Статус:** Frontend готов, Backend работает на FastAPI + SQLite

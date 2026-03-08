@@ -104,6 +104,10 @@ export default function PricingPage() {
           <div className="text-center text-gray-600 mb-16">Загрузка тарифов...</div>
         ) : error ? (
           <div className="text-center text-red-600 mb-16">{error}</div>
+        ) : plans.length === 0 ? (
+          <div className="text-center text-gray-600 mb-16">
+            Тарифы пока не добавлены. Запустите `python seed_db.py`, чтобы загрузить демо-данные.
+          </div>
         ) : (
           <div className="grid md:grid-cols-3 gap-8 mb-16">
             {plans.map((plan, idx) => (

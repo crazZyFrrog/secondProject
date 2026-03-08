@@ -22,6 +22,10 @@ export default function SettingsPage() {
   const [savingNotifications, setSavingNotifications] = useState(false)
   const [notificationsError, setNotificationsError] = useState<string | null>(null)
   const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
   const tabs = [
     { id: 'profile', name: 'Профиль', icon: <User size={20} /> },
@@ -172,37 +176,62 @@ export default function SettingsPage() {
                     <div className="space-y-4">
                       <input
                         type="password"
-                        placeholder="Текущий пароль"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                      <input
-                        type="password"
                         placeholder="Новый пароль"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      />
-                      <input
-                        type="password"
-                        placeholder="Подтвердите новый пароль"
+                        value={newPassword}
+                        onChange={(e) => {
+                          setPasswordError(null)
+                          setPasswordSuccess(null)
+                          setNewPassword(e.target.value)
+                        }}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-200 pt-6">
-                    <h3 className="font-semibold mb-4">Двухфакторная аутентификация</h3>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-gray-700">Включить 2FA для дополнительной защиты</p>
-                        <p className="text-sm text-gray-500">Требуется приложение-аутентификатор</p>
-                      </div>
-                      <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                        Настроить
-                      </button>
+                  {passwordError && (
+                    <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      {passwordError}
                     </div>
-                  </div>
+                  )}
+                  {passwordSuccess && (
+                    <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      {passwordSuccess}
+                    </div>
+                  )}
 
-                  <button className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition">
-                    Обновить пароль
+                  <button
+                    className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={savingPassword || newPassword.trim().length === 0}
+                    onClick={async () => {
+                      const trimmed = newPassword.trim()
+                      if (!trimmed) {
+                        setPasswordError('Введите новый пароль')
+                        return
+                      }
+                      if (trimmed.length > 30) {
+                        setPasswordError('Максимум 30 символов')
+                        return
+                      }
+                      setSavingPassword(true)
+                      setPasswordError(null)
+                      setPasswordSuccess(null)
+                      try {
+                        const token = getAuthToken()
+                        await apiRequest('/clients/me/password', {
+                          method: 'PATCH',
+                          token,
+                          body: { password: trimmed }
+                        })
+                        setPasswordSuccess('Пароль обновлен')
+                        setNewPassword('')
+                      } catch (err: any) {
+                        setPasswordError(err.message || 'Не удалось обновить пароль')
+                      } finally {
+                        setSavingPassword(false)
+                      }
+                    }}
+                  >
+                    {savingPassword ? 'Сохранение...' : 'Обновить пароль'}
                   </button>
                 </div>
               </div>

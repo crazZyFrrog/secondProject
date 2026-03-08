@@ -5,7 +5,7 @@
 ```
 secondProject/
 ├── frontend/          # React приложение
-├── backend/           # API (в разработке)
+├── backend/           # FastAPI + SQLite
 └── README.md
 ```
 
@@ -21,12 +21,18 @@ npm run dev
 
 Откройте: **http://localhost:5173/**
 
-### 2. Backend (в разработке)
+### 2. Backend
 
 ```bash
 cd backend
-# Будет добавлено позже
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python seed_db.py
+python -m uvicorn main:app --reload --port 5000
 ```
+
+Документация API: **http://localhost:5000/docs**
 
 ## 📋 Основные команды
 
@@ -69,16 +75,16 @@ npx tsc --noEmit
 
 ## 🔑 Тестовый вход
 
-Используйте любые данные:
-- **Email:** test@mail.ru
-- **Пароль:** 123456
+Используйте сид‑данные:
+- **Email:** demo@example.com
+- **Пароль:** demo1234
 
 ## 📚 Документация
 
 - `README.md` - Главная документация
 - `frontend/README.md` - Детали фронтенда
 - `frontend/STRUCTURE.md` - Описание всех страниц
-- `backend/README.md` - Планы по бэкенду
+- `backend/README.md` - Документация по бэкенду
 
 ## 🛠 Технологии
 
@@ -89,11 +95,10 @@ npx tsc --noEmit
 - React Router v6
 - Zustand
 
-**Backend (планируется):**
-- Node.js + Express
-- PostgreSQL
-- JWT Auth
-- OpenAI API
+**Backend:**
+- FastAPI + Uvicorn
+- SQLite
+- JWT‑подобные токены
 
 ---
 
